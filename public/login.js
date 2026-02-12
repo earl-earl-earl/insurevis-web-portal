@@ -1,10 +1,10 @@
 'use strict';
 
-let supabase = null;
+let supabaseClient = null;
 
 // Initialize Supabase client from backend config
 async function initSupabase() {
-  if (supabase) return supabase;
+  if (supabaseClient) return supabaseClient;
   
   try {
     const response = await fetch('/api/config/supabase');
@@ -14,14 +14,14 @@ async function initSupabase() {
       throw new Error('Failed to load Supabase configuration');
     }
     
-    supabase = window.supabase.createClient(result.data.url, result.data.anonKey, {
+    supabaseClient = window.supabase.createClient(result.data.url, result.data.anonKey, {
       auth: {
         persistSession: true,
         detectSessionInUrl: true
       }
     });
     
-    return supabase;
+    return supabaseClient;
   } catch (error) {
     console.error('Error initializing Supabase:', error);
     throw error;
@@ -109,7 +109,7 @@ function extractRoleFromMetadata(user) {
 
 async function attemptRoleLookup(user, table, column) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from(table)
       .select(column)
       .eq('id', user.id)
@@ -186,7 +186,7 @@ async function checkExistingSession() {
     await initSupabase();
     const {
       data: { session }
-    } = await supabase.auth.getSession();
+    } = await supabaseClient.auth.getSession();
     if (session?.user && !isLoggingOut) {
       await redirectForUser(session.user, { silent: true });
     }
@@ -211,7 +211,7 @@ async function handleLogin(event) {
 
   try {
     await initSupabase();
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
       email,
       password
     });
@@ -220,7 +220,7 @@ async function handleLogin(event) {
       throw error;
     }
 
-    const user = data?.user || (await supabase.auth.getUser()).data?.user;
+    const user = data?.user || (await supabaseClient.auth.getUser()).data?.user;
     if (!user) {
       throw new Error('Authentication succeeded but no user data was returned.');
     }
@@ -250,7 +250,7 @@ async function handlePasswordReset(event) {
 
   try {
     await initSupabase();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + '/reset-password'
     });
     if (error) throw error;
@@ -289,7 +289,7 @@ async function bootstrap() {
   await checkExistingSession();
   
   // Set up auth state change listener
-  supabase.auth.onAuthStateChange((event, session) => {
+  supabaseClient.auth.onAuthStateChange((event, session) => {
     // Don't redirect on SIGNED_OUT events or during logout to avoid redirect loops
     if (event === 'SIGNED_OUT' || isLoggingOut) {
       return;
