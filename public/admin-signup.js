@@ -1,10 +1,10 @@
 'use strict';
 
-let supabase = null;
+let supabaseClient = null;
 
 // Initialize Supabase client from backend config
 async function initSupabase() {
-  if (supabase) return supabase;
+  if (supabaseClient) return supabaseClient;
   
   try {
     const response = await fetch('/api/config/supabase');
@@ -14,14 +14,14 @@ async function initSupabase() {
       throw new Error('Failed to load Supabase configuration');
     }
     
-    supabase = window.supabase.createClient(result.data.url, result.data.anonKey, {
+    supabaseClient = window.supabase.createClient(result.data.url, result.data.anonKey, {
       auth: {
         persistSession: false,
         detectSessionInUrl: true
       }
     });
     
-    return supabase;
+    return supabaseClient;
   } catch (error) {
     console.error('Error initializing Supabase:', error);
     throw error;
@@ -117,7 +117,7 @@ async function handleSignup(event) {
 
   try {
     await initSupabase();
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await supabaseClient.auth.signUp({
       email,
       password,
       options: {
@@ -136,7 +136,7 @@ async function handleSignup(event) {
 
     const createdUser = data?.user;
     if (createdUser) {
-      await supabase.auth
+      await supabaseClient.auth
         .updateUser({
           data: {
             role: dbRole,
@@ -157,7 +157,7 @@ async function handleSignup(event) {
       );
     }
 
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => null);
+    await supabaseClient.auth.signOut({ scope: 'local' }).catch(() => null);
     event.target.reset();
   } catch (signupError) {
     console.error('Signup error:', signupError);
@@ -181,7 +181,7 @@ function wireEvents() {
     try {
       await initSupabase();
       // Sign out from Supabase
-      await supabase.auth.signOut({ scope: 'global' });
+      await supabaseClient.auth.signOut({ scope: 'global' });
       // Clear all local storage related to Supabase
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('sb-')) {

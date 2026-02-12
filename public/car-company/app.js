@@ -1,12 +1,12 @@
 // Car Company Portal - Document Verification System
 // Supabase Configuration - loaded from backend
-let supabase = null;
+let supabaseClient = null;
 let supabaseUrl = null;
 let supabaseAnonKey = null;
 
 // Initialize Supabase client from backend config
 async function initSupabase() {
-  if (supabase) return supabase;
+  if (supabaseClient) return supabaseClient;
   
   try {
     const response = await fetch('/api/config/supabase');
@@ -18,9 +18,9 @@ async function initSupabase() {
     
     supabaseUrl = result.data.url;
     supabaseAnonKey = result.data.anonKey;
-    supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
     
-    return supabase;
+    return supabaseClient;
   } catch (error) {
     console.error('Error initializing Supabase:', error);
     throw error;
@@ -103,7 +103,7 @@ async function resolveUserRole(user) {
 
     for (const source of fallbackSources) {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from(source.table)
                 .select(source.column)
                 .eq('id', user.id)
@@ -129,7 +129,7 @@ function redirectTo(path) {
 async function bootstrapPortal() {
     try {
         await initSupabase();
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseClient.auth.getSession();
         const user = session?.user;
 
         if (!user) {
@@ -167,7 +167,7 @@ async function initializeApp() {
     setupEventListeners();
     
     // Check if we have any claims data, if not create test data
-    const { data: existingClaims } = await supabase
+    const { data: existingClaims } = await supabaseClient
         .from('claims')
         .select('id')
         .limit(1);
@@ -202,7 +202,7 @@ async function createTestData() {
         ];
 
         // Insert users (ignore conflicts)
-        await supabase
+        await supabaseClient
             .from('users')
             .upsert(testUsers, { onConflict: 'id' });
 
@@ -228,7 +228,7 @@ async function createTestData() {
             }
         ];
 
-        await supabase
+        await supabaseClient
             .from('claims')
             .upsert(testClaims, { onConflict: 'id' });
 
@@ -333,7 +333,7 @@ async function createTestData() {
             }
         ];
 
-        await supabase
+        await supabaseClient
             .from('documents')
             .upsert(testDocuments, { onConflict: 'id' });
 
@@ -366,7 +366,7 @@ function setupEventListeners() {
             try {
                 // Set flag to prevent login page from auto-redirecting
                 sessionStorage.setItem('justLoggedOut', 'true');
-                await supabase.auth.signOut();
+                await supabaseClient.auth.signOut();
             } catch (error) {
                 console.error('Failed to sign out:', error);
             } finally {
@@ -450,7 +450,7 @@ async function loadAuditLogs(filters = {}) {
     
     try {
         // Build query with optional filters
-        let query = supabase
+        let query = supabaseClient
             .from('audit_logs')
             .select(`
                 id,
@@ -863,7 +863,7 @@ async function loadClaims() {
     try {
         // First, migrate existing claims that have is_approved_by_car_company but no car_company_status
         try {
-            const { data: claimsToMigrate, error: migrateCheckError } = await supabase
+            const { data: claimsToMigrate, error: migrateCheckError } = await supabaseClient
                 .from('claims')
                 .select('id, is_approved_by_car_company, car_company_status, car_company_approval_notes')
                 .or('car_company_status.is.null,car_company_status.eq.pending');
@@ -881,7 +881,7 @@ async function loadClaims() {
                 
                 // Update claims in batches
                 for (const update of updates) {
-                    await supabase
+                    await supabaseClient
                         .from('claims')
                         .update({ car_company_status: update.car_company_status })
                         .eq('id', update.id);
@@ -894,7 +894,7 @@ async function loadClaims() {
         }
         
         // Fetch claims with user information and document counts
-            const { data: claims, error } = await supabase
+            const { data: claims, error } = await supabaseClient
                 .from('claims')
                 .select(`
                     *,
@@ -950,7 +950,7 @@ async function loadClaims() {
                 console.log(`🔄 Reverting ${claimsToRevert.length} approved claims to pending due to unverified documents.`);
                 
                 // Perform the update in background
-                await supabase
+                await supabaseClient
                     .from('claims')
                     .update({ 
                         car_company_status: 'pending',
@@ -1003,17 +1003,17 @@ async function setupClaimsRealtimeSubscription() {
     // Unsubscribe from any existing subscription (only this channel)
     if (claimsRealtimeSubscription) {
         try {
-            supabase.removeChannel(claimsRealtimeSubscription);
+            supabaseClient.removeChannel(claimsRealtimeSubscription);
             console.log('🔴 Unsubscribed from previous claims realtime channel');
         } catch (err) {
             console.warn('Failed to remove previous channel via removeChannel, falling back to removeAllChannels:', err);
-            try { await supabase.removeAllChannels(); } catch (e) { /* ignore */ }
+            try { await supabaseClient.removeAllChannels(); } catch (e) { /* ignore */ }
         }
         claimsRealtimeSubscription = null;
     }
 
     // Subscribe to claims table changes
-    claimsRealtimeSubscription = supabase
+    claimsRealtimeSubscription = supabaseClient
         .channel('claims-changes')
         .on('postgres_changes', 
             { 
@@ -1094,7 +1094,7 @@ async function setupDocumentsRealtimeSubscription() {
     // Unsubscribe from any existing documents subscription
     if (documentsRealtimeSubscription) {
         try {
-            supabase.removeChannel(documentsRealtimeSubscription);
+            supabaseClient.removeChannel(documentsRealtimeSubscription);
             console.log('🔴 Unsubscribed from previous documents realtime channel');
         } catch (err) {
             console.warn('Failed to remove documents channel:', err);
@@ -1109,7 +1109,7 @@ async function setupDocumentsRealtimeSubscription() {
     }
 
     // Subscribe to documents table changes for current claim
-    documentsRealtimeSubscription = supabase
+    documentsRealtimeSubscription = supabaseClient
         .channel('documents-changes')
         .on('postgres_changes', 
             { 
@@ -1278,7 +1278,7 @@ async function loadClaimDocuments(claimId) {
     
     try {
         // Fetch claim details
-        const { data: claim, error: claimError } = await supabase
+        const { data: claim, error: claimError } = await supabaseClient
             .from('claims')
             .select(`
                 *,
@@ -1356,7 +1356,7 @@ async function loadClaimDocuments(claimId) {
         }
 
         // Fetch documents that car company can verify
-        const { data: documents, error: docsError } = await supabase
+        const { data: documents, error: docsError } = await supabaseClient
             .from('documents')
             .select('*')
             .eq('claim_id', claimId)
@@ -1495,7 +1495,7 @@ async function decideClaim(decision, notes = '') {
             // Send notification to claim owner. Resolve user id from claim if possible.
             (async () => {
                 try {
-                    const { data: claimData, error: claimErr } = await supabase
+                    const { data: claimData, error: claimErr } = await supabaseClient
                         .from('claims')
                         .select('user_id, claim_number')
                         .eq('id', currentClaim)
@@ -1523,7 +1523,7 @@ async function decideClaim(decision, notes = '') {
             if (notes) updateData.car_company_approval_notes = notes;
             (async () => {
                 try {
-                    const { data: claimData, error: claimErr } = await supabase
+                    const { data: claimData, error: claimErr } = await supabaseClient
                         .from('claims')
                         .select('user_id, claim_number')
                         .eq('id', currentClaim)
@@ -1547,7 +1547,7 @@ async function decideClaim(decision, notes = '') {
             if (notes) updateData.car_company_approval_notes = notes;
             (async () => {
                 try {
-                    const { data: claimData, error: claimErr } = await supabase
+                    const { data: claimData, error: claimErr } = await supabaseClient
                         .from('claims')
                         .select('user_id, claim_number')
                         .eq('id', currentClaim)
@@ -1566,7 +1566,7 @@ async function decideClaim(decision, notes = '') {
             // Do not change verified flag on hold
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('claims')
             .update(updateData)
             .eq('id', currentClaim);
@@ -2018,10 +2018,10 @@ function getDocumentUrl(doc, options = {}) {
         }
 
         // If we have an object path and a Supabase client, request a signed URL
-        if (objectPath && typeof supabase !== 'undefined') {
+        if (objectPath && typeof supabaseClient !== 'undefined') {
             try {
                 console.log('🔐 Attempting to create signed URL for:', objectPath, 'expiresIn:', expiresIn, 'bucket:', bucketName);
-                const { data, error } = await supabase.storage
+                const { data, error } = await supabaseClient.storage
                     .from(bucketName)
                     .createSignedUrl(objectPath, expiresIn);
 
@@ -2076,7 +2076,7 @@ async function handleDocumentDecision(decision) {
     
     try {
         // Get current user for audit trail
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await supabaseClient.auth.getUser();
         
         if (!user) {
             notify('error', 'Error', 'User session expired. Please login again.', 1500);
@@ -2096,7 +2096,7 @@ async function handleDocumentDecision(decision) {
             updateData.car_company_verification_date = null;
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('documents')
             .update(updateData)
             .eq('id', currentDocId);
@@ -2116,7 +2116,7 @@ async function handleDocumentDecision(decision) {
         // If this action unverified a document, immediately mark the claim as not approved by car company
         if (!isVerified && currentClaim) {
             try {
-                await supabase
+                await supabaseClient
                     .from('claims')
                     .update({ is_approved_by_car_company: false, car_company_approval_date: null })
                     .eq('id', currentClaim);
@@ -2134,7 +2134,7 @@ async function handleDocumentDecision(decision) {
 
             const allDocsVerified = Array.isArray(currentDocuments) && currentDocuments.length > 0 && currentDocuments.every(d => !!d.verified_by_car_company);
             if (currentClaim && allDocsVerified) {
-                const { data: claimRow, error: claimFetchErr } = await supabase
+                const { data: claimRow, error: claimFetchErr } = await supabaseClient
                     .from('claims')
                     .select('is_approved_by_car_company, status, car_company_status')
                     .eq('id', currentClaim)
@@ -2149,7 +2149,7 @@ async function handleDocumentDecision(decision) {
                     // (Though we are in saveDocumentVerification, so explicit approval shouldn't have happened yet)
                     if (isAutoApproved && globalStatus !== 'submitted' && globalStatus !== 'approved') {
                         console.log('🛡️ Safety guard: Reverting auto-approval of claim');
-                        await supabase
+                        await supabaseClient
                             .from('claims')
                             .update({ 
                                 is_approved_by_car_company: false,
@@ -2183,7 +2183,7 @@ async function handleDocumentDecision(decision) {
         // BUT keep them hidden since we're still in the modal
         try {
             if (currentClaim) {
-                const { data: freshClaim, error: freshErr } = await supabase
+                const { data: freshClaim, error: freshErr } = await supabaseClient
                     .from('claims')
                     .select('id, status, is_approved_by_car_company')
                     .eq('id', currentClaim)
@@ -2437,7 +2437,7 @@ function showClaimsPage() {
     // Unsubscribe from documents real-time when leaving claim view
     if (documentsRealtimeSubscription) {
         try {
-            supabase.removeChannel(documentsRealtimeSubscription);
+            supabaseClient.removeChannel(documentsRealtimeSubscription);
             console.log('🔴 Unsubscribed from documents realtime channel');
         } catch (err) {
             console.warn('Failed to unsubscribe from documents channel:', err);
@@ -2545,7 +2545,7 @@ async function openDocumentInNewTab(documentId) {
         if (!doc) return;
         if (typeof PREFER_STORAGE_DOWNLOAD !== 'undefined' && PREFER_STORAGE_DOWNLOAD) {
             const { bucketName, objectPath } = resolveStorageObject(doc);
-            const { data, error } = await supabase.storage.from(bucketName).download(objectPath);
+            const { data, error } = await supabaseClient.storage.from(bucketName).download(objectPath);
             if (error || !data) {
                 console.error('openDocumentInNewTab download error:', error || 'no data');
                 showError('Unable to download the document for opening.');
@@ -2596,7 +2596,7 @@ async function __fallbackDocView(documentId, fileExtension) {
             return;
         }
         console.log('↩️ Fallback download from bucket:', bucketName, 'path:', objectPath);
-        const { data, error } = await supabase.storage.from(bucketName).download(objectPath);
+        const { data, error } = await supabaseClient.storage.from(bucketName).download(objectPath);
         if (error || !data) {
             console.error('Fallback download error:', error || 'no data');
             showError('Fallback download failed: ' + (error?.message || 'Unknown error'));
@@ -2874,7 +2874,7 @@ async function confirmDocumentRejection() {
     
     try {
         // Update document with rejection notes
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('documents')
             .update({
                 verified_by_car_company: false,
@@ -2902,7 +2902,7 @@ async function confirmDocumentRejection() {
 
         // Clear car company approval if any document is rejected
         if (currentClaim) {
-            await supabase
+            await supabaseClient
                 .from('claims')
                 .update({ is_approved_by_car_company: false, car_company_approval_date: null })
                 .eq('id', currentClaim);
